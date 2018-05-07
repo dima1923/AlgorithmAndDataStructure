@@ -1,0 +1,842 @@
+// ConsoleApplication2.cpp: определяет точку входа для консольного приложения.
+//
+
+#include "stdafx.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <malloc.h>
+#include <locale.h>
+#include <stdlib.h>
+#include <time.h>  
+
+
+#define Red 1
+#define Black 0
+FILE* fd,*fileRes=NULL;
+char*exel = NULL;
+const int N = 3;
+const char *menu[] = { "0. Завершение работы",
+"1. Включение нового элемента",
+"2. Удаление элемента",
+"3. Поиск в таблице (по ключу)",
+"4. Вoзврат элемента, соответствующего ключу с максимальным значением",
+"5. Вывод содержимого таблицы ",
+"6. Вывод содержимого таблицы в виде дерева",
+"7. Считать из файла",
+"8. Таймирование процедуры поиска" };
+const int lenmenu = sizeof(menu) / sizeof(menu[0]);
+int SIZE = 1;
+int Elem = 0;
+int w = 0;
+typedef struct Node {
+	int key, color;
+	struct Node *left, *right, *parent;
+	char *info;
+} Node;
+
+typedef struct Item {
+	int busy, key;
+	Node *pNode;
+	char *info;
+} Item;
+typedef struct Matrix {
+	//int lines;  //количество эл-тов
+	int key, color; // массив ключей матрицы
+	char *info; // массив строк матрицы
+
+
+} Matrix;
+
+
+
+int CreateTree(Node **, Node **, Item **);
+int getInt(int *);
+int getStr(char **);
+int dialog(const char *menu[], int);
+int hashFun(int);
+int dAdd();
+int dDelete();
+int dSearch();
+int dShow();
+int dMax();
+int D_Show_Tree(void);
+void show_tree(Node *ptr);
+int D_F_Read();
+int measuredFunc();
+void InsertInCash(Node *);
+void InsertnewInCash(int f, char *data);
+void DeleteFromCash(int);
+Node* SearchInCash(int);
+int SearchOnlyCash(int);
+void Right_rotate(Node *);
+void Left_rotate(Node *); //
+Node* RB_Insert(Node *);
+void RB_Insert_Fixup(Node *);
+Node* RB_Find(int);
+void RB_Delete(Node *);
+void RB_Delete_Fixup(Node *);
+int work(Node *, Matrix *);
+Node* successor(Node *);
+Node* Min(Node *pt);
+int MaxTree();
+void erase(Matrix *a);
+int workInTable(Matrix *);
+void sort(Matrix *);
+char *FgetStr(void);
+int FgetInt(int *a);
+
+
+
+int(*fun[])() = { NULL, dAdd, dDelete, dSearch, dMax, dShow, D_Show_Tree,D_F_Read,measuredFunc };
+Item *cash = NULL;
+Node *Elist = NULL, *Root = NULL;
+
+int main()
+{
+	int com;
+	setlocale(LC_ALL, "");
+	if (!CreateTree(&Root, &Elist, &cash))
+		return 0;
+	while (com = dialog(menu, lenmenu))
+		if (!fun[com]())
+			break;
+	free(cash);
+	puts("Спасибо за работу");
+	return 1;
+}
+
+int CreateTree(Node **pp, Node **pt, Item **ct) //
+{
+	*ct = (Item *)calloc(N, sizeof(Item));
+	if (!*ct) {
+		puts("Недостаточно памяти");
+		return 0;
+	}
+	*pt = (Node *)calloc(1, sizeof(Node));
+	if (!*pt) {
+		puts("Недостаточно памяти");
+		return 0;
+	}
+	(*pt)->key = 0;
+	(*pt)->color = Black;
+	(*pt)->left = (*pt)->right = (*pt)->parent = NULL;
+	*pp = *pt;
+	return 1;
+}
+
+int getInt(int *x) //подходит
+{
+	int k;
+	do {
+		k = scanf_s("%d", x, sizeof(int));
+		if (k < 0) {
+			printf("** EoF **\n");
+			return 0;
+		}
+		if (!k)
+		{
+			printf("Ошибка, повторите ввод:  ");
+			scanf_s("%*[^\n]");
+		}
+	} while (!k);
+	scanf_s("%*[^\n]");
+	scanf_s("%*c");
+	return 1;
+}
+
+int getStr(char **sp)
+{
+	int k, fl = 1, b;
+	char s[51], *s1 = (char *)calloc(1, sizeof(char));
+	if (!s1) {
+		puts("Недостаточно памяти");
+		return 0;
+	}
+	do {
+		k = scanf_s("%50[^\n]", s, 51);
+		if (k > 0)
+		{
+			b = strlen(s1) + strlen(s) + 1;
+			s1 = (char *)realloc(s1, b*sizeof(char));
+			if (!s1) {
+				puts("Недостаточно памяти");
+				return 0;
+			}
+			strcat_s(s1, b*sizeof(char), s);
+			continue;
+		}
+		if (k < 0)
+		{
+			free(s1);
+			s1 = NULL;
+			fl = 0;
+			printf("** EoF **\n");
+		}
+		else scanf_s("%*c");
+	} while (k > 0);
+	*sp = s1;
+	return fl;
+}
+
+
+
+int dialog(const char *menu[], int lenmenu) //
+{
+	int num, i = 0;
+	char *err = "";
+	printf("\n");
+	for (; i < lenmenu; i++)
+		puts(menu[i]);
+	printf("\nВыберите команду:  ");
+	do {
+		puts(err);
+		if (!getInt(&num)) return 0;
+		err = "Ошибка, повторите ввод:  ";
+	} while (num<0 || num>lenmenu - 1);
+	return num;
+}
+
+int hashFun(int f) //
+{
+	f = (f<0) ? -f : f;
+	return f%N;
+}
+
+
+void DeleteFromCash(int f)
+{
+	int pos = hashFun(f);
+	cash[pos].busy = -1;
+	cash[pos].pNode = NULL;
+}
+
+
+Node *RB_Insert(Node *x)
+{
+	Node *prev = Elist, *ptr = Root;//вставка в бинарное дерево   
+
+	while (ptr != Elist) {
+		prev = ptr;
+		if (x->key < ptr->key)
+			ptr = ptr->left;
+		else
+			ptr = ptr->right;
+	}
+	x->parent = prev;
+	if (prev == Elist)
+		Root = x;
+	else {
+		if (x->key < prev->key)
+			prev->left = x;
+		else
+			prev->right = x;
+	}
+	x->left = Elist;
+	x->right = Elist;
+	x->color = 1;
+
+	RB_Insert_Fixup(x);
+
+	return x;
+}
+
+void RB_Insert_Fixup(Node *x) //
+{
+	Node *p1 = NULL, *pp = NULL, *p2 = NULL;
+	while (x->parent->color == Red) {
+		p1 = x->parent;//родительский узел для x
+		pp = p1->parent; //родительский узел для p1, p2 вставляем
+		if (p1 == pp->left) {
+			p2 = pp->right;
+			if (p2->color == Red) { //случай 1: перекрасить вершины
+				p1->color = Black;
+				p2->color = Black;
+				pp->color = Red;
+				x = pp;
+			}
+			else {
+
+				if (x == p1->right) {
+					x = p1; //случай 2
+					Left_rotate(x);
+					p1 = x->parent;
+				}
+
+				p1->color = Black; //Случай 3
+				pp->color = Red;
+				Right_rotate(pp);
+			}
+		}
+
+		else {
+			p2 = pp->left;
+			if (p2->color == Red) {
+				p1->color = Black;
+				p2->color = Black;
+				pp->color = Red;
+				x = pp;
+			}
+			else {
+				if (x == p1->left) {
+					x = p1;
+					Right_rotate(x);
+					p1 = x->parent;
+				}
+				p1->color = Black;
+				pp->color = Red;
+				Left_rotate(pp);
+			}
+		}
+	}
+
+	Root->color = Black;
+
+}
+
+void Right_rotate(Node *x) //
+{
+	Node *l = x->left, *p = x->parent;
+	x->left = l->right;
+	if (l->right != Elist) l->right->parent = x;
+	l->parent = p;
+	if (p == Elist) Root = l;
+	else
+		if (p->left == x) p->left = l;
+		else p->right = l;
+		l->right = x;
+		x->parent = l;
+}
+
+void Left_rotate(Node *x) //
+{
+	Node *y = x->right, *p = x->parent;
+	x->right = y->left;
+	if (y->left != Elist) y->left->parent = x;
+	y->parent = p;
+	if (p == Elist) Root = y;
+	else
+		if (p->left == x) p->left = y;
+		else p->right = y;
+		y->left = x;
+		x->parent = y;
+}
+
+Node* RB_Find(int f) //
+{
+	Node *pt = Root;
+	while (pt != Elist) {
+		if (pt->key == f) return pt;
+		if (f < pt->key) pt = pt->left;
+		else pt = pt->right;
+	}
+	return NULL;
+}
+
+void RB_Delete(Node *x)
+{
+	Node *p = NULL, *y = NULL;
+	if (x->left == Elist || x->right == Elist) y = x;
+	else y = successor(x);
+	p = (y->left == Elist) ? y->right : y->left;
+	p->parent = y->parent;
+	if (y->parent == Elist) Root = p;
+	else
+		if (y->parent->left == y) y->parent->left = p;
+		else y->parent->right = p;
+		if (x != y) {
+			x->key = y->key;
+			x->info = y->info;
+		}
+		if (y->color == Black) RB_Delete_Fixup(p);
+}
+
+void RB_Delete_Fixup(Node *x)
+
+{
+
+	Node *p = x->parent, *c = NULL;
+	/*x – анализируемый узел дерева
+	p = x->parent – родительский узел
+	c = p->right (или p->left) – второй потомок узла p*/
+	while (x != Root && x->color == Black) { //продолжать итерации
+		p = x->parent; //проверка, в каком поддереве лежит x:
+		if (x == p->left) {
+			c = p->right;
+			if (c->color == Red) { //поменять цвета у c и p:
+				c->color = Black;
+				p->color = Red;
+				Left_rotate(p);
+				c = p->right;
+			}
+			if (c->left->color == Black && c->right->color == Black) { //оба потомка черные
+				c->color = Red; //забрать черную окраску
+				x = p; //переместиться вверх по дереву
+			}
+			else {
+				if (c->right->color == Black) { //правый потомок c черный
+					c->color = Red;
+					c->left->color = Black;
+					Right_rotate(c);
+					c = p->right;
+				}
+				c->color = p->color;
+				p->color = Black;
+				c->right->color = Black;
+				Left_rotate(p);
+				x = Root;
+			}
+		}
+		else { // тоже самое, но заменили left на right
+			c = p->left;
+			if (c->color == Red) {
+				c->color = Black;
+				p->color = Red;
+				Right_rotate(p);
+				c = p->left;
+			}
+			if (c->left->color == Black && c->right->color == Black) {
+				c->color = Red;
+				x = p;
+			}
+			else {
+				if (c->left->color == Black) {
+					c->color = Red;
+					c->right->color = Black;
+					Left_rotate(c);
+					c = p->left;
+				}
+				c->color = p->color;
+				p->color = Black;
+				c->left->color = Black;
+				Right_rotate(p);
+				x = Root;
+			}
+		}
+	}
+	x->color = Black;
+
+}
+void InsertnewInCash(int f, char *data) //
+{
+	int pos = hashFun(f);
+	cash[pos].busy = 1;
+	cash[pos].key = f;
+	cash[pos].info = data;
+	cash[pos].pNode = NULL;
+}
+
+int dAdd() 
+{
+	int f, pos;
+	char *str;
+	printf("Введите ключ: ");
+	if (!getInt(&f)) return 0;
+	puts("Введите информацию:");
+	if (!getStr(&str)) return 0;
+	if (SearchOnlyCash(f) >= 0) {
+		puts("Дублирование ключей в таблице");
+		return 1;
+	}
+	if (RB_Find(f)) {
+		puts("Дублирование ключей в дереве");
+		return 1;
+	}
+	Elem++;
+	pos = hashFun(f);
+	if (cash[pos].busy == 1) {
+		if (!cash[pos].pNode) {
+			Node *x = (Node *)calloc(1, sizeof(Node));
+			x->key = cash[pos].key;
+			x->info = cash[pos].info;
+			x = RB_Insert(x);
+			if (!x) return 0;
+		}
+		InsertnewInCash(f, str);
+		puts("Элемент из кеш-буфера добавлен в дерево");
+	}
+	else {
+		InsertnewInCash(f, str);
+		puts("Элемент добавлен в кеш-буфер");
+
+	}
+
+	return 1;
+}
+
+int dDelete() //
+{
+	int f, pos;
+	Node *dop = NULL;
+	printf("Ведите ключ: ");
+	if (!getInt(&f)) return 0;
+	if ((pos = SearchOnlyCash(f))>-1)  //  удаление из таблицы
+	{
+		DeleteFromCash(f);
+		Elem = Elem - 1;
+		puts("Элемент успешно удален из таблицы");
+		return 1;
+	}
+	if (dop = RB_Find(f)) { // удаление из дерева
+		RB_Delete(dop);
+		Elem = Elem - 1;
+		printf("%d \n", Elem);
+		puts("Элемент успешно удален из дерева");
+		return 1;
+	}
+	puts("Элемент не найден");
+
+	return 1;
+}
+Node* SearchInCash(int f) //
+{
+	int pos = hashFun(f);
+	if (cash[pos].busy == 1 && cash[pos].key == f)
+		return cash[pos].pNode;
+	else return NULL;
+}
+int SearchOnlyCash(int f)
+{
+	int pos = hashFun(f);
+	if (cash[pos].busy == 1 && cash[pos].key == f)
+		return pos;
+	return -1;
+}
+
+int dSearch() //
+{
+	int f, pos, i;
+	Node *dop, *pt = NULL;
+	printf("Введите ключ: ");
+	if (!getInt(&f)) return 0;
+	if ((pos = SearchOnlyCash(f)) >= 0) {
+		puts("Ключ найден в таблице");
+		printf(" %d   %s\n", cash[pos].key, cash[pos].info);
+		return 1;
+	}
+	if (dop = RB_Find(f))
+	{
+		puts("Ключ найден в дереве");
+		printf(" %d   %s\n", dop->key, dop->info);
+		pos = hashFun(f);
+		if (cash[pos].busy == 1) {
+			Node *x = (Node *)calloc(1, sizeof(Node));
+			x->key = cash[pos].key;
+			x->info = cash[pos].info;
+
+			pt = RB_Insert(x);
+			if (!pt) return 0;
+		}
+
+		InsertnewInCash(dop->key, dop->info);
+		RB_Delete(dop);
+		return 1;
+	}
+
+	if (i = SearchOnlyCash(f))
+	{
+		puts("Найдено только в кеш-таблице:");
+		pos = hashFun(f);
+		printf(" %d   %s\n", f, cash[pos].info);
+		return 1;
+	}
+	puts("Ключ не найден");
+	return 1;
+}
+
+int dShow()
+{
+	Node *pt = Root;
+	Matrix *p;
+	p = (Matrix *)calloc(Elem, sizeof(Matrix));
+	if (Root->left || Root->right) {
+		puts("Корень дерева:");
+		printf("%5d %5d %s \n", Root->key, Root->color, Root->info);
+	}
+	puts("Ключ    информация :");
+	if (pt != Elist) work(pt, p);
+	workInTable(p);
+	erase(p);
+	return 1;
+}
+int work(Node *ptr, Matrix *rm)
+{
+
+	if (ptr != Elist) {
+
+		work(ptr->left, rm);
+		//rm = (Matrix *)realloc(rm, (SIZE)*(sizeof(Matrix)));
+		//rm = (Matrix *)realloc(sizeof(Matrix), (rm->lines+1)); //выделяем необходимую память под элементы строки
+		rm[SIZE - 1].info = ptr->info;
+		rm[SIZE - 1].color = ptr->color;
+		rm[SIZE - 1].key = ptr->key;
+		SIZE++;
+		work(ptr->right, rm);
+	}
+	return 1;
+}
+int workInTable(Matrix *rm)
+{
+	int i;
+	for (i = 0; i < N; i++) {
+		if (cash[i].busy == 1) {
+			rm[SIZE - 1].info = cash[i].info;
+			rm[SIZE - 1].key = cash[i].key;
+			SIZE++;
+
+		}
+
+	}
+	sort(rm);
+	for (i = 0; i < SIZE - 1; i++) {
+		printf("%5d  %s", rm[i].key, rm[i].info);
+		printf("\n");
+	}
+	return 1;
+}
+
+int dMax()
+{
+	int i, max;
+	max = MaxTree();
+	for (i = 0; i < N; i++) {
+		if (cash[i].busy == 1 && cash[i].key > max) max = cash[i].key;
+	}
+	if (max >= 0) {
+		printf(" %d   %s\n", cash[hashFun(max)].key, cash[hashFun(max)].info);
+		return 1;
+	}
+
+	puts("Нет элементов");
+	return 1;
+}
+int MaxTree()
+{
+	Node *ptr = Root, *x;
+	int pos;
+	if (ptr == Elist) {
+		//puts("Таблица пуста");
+		return -1;
+	}
+
+	else
+		while (ptr->right != Elist)
+			ptr = ptr->right;
+	if (ptr->key > cash[hashFun(ptr->key)].key) {
+		Node *x = (Node *)calloc(1, sizeof(Node));
+		x->key = cash[hashFun(ptr->key)].key;
+		x->info = cash[hashFun(ptr->key)].info;
+		x = RB_Insert(x);
+		InsertnewInCash(ptr->key, ptr->info);
+		RB_Delete(ptr);
+		return ptr->key;
+	}
+	else return cash[hashFun(ptr->key)].key;
+}
+Node* successor(Node *pt)
+{
+	Node *tmp;
+	if (pt->right != Elist) {
+		pt = pt->right;
+		return Min(pt);
+	}
+	tmp = pt->parent;
+	while (tmp != Elist && pt == tmp->right) {
+		pt = tmp;
+		tmp = pt->parent;
+	}
+	return tmp;
+}
+Node* Min(Node *pt)
+{
+	while (pt != Elist && pt->left != Elist)
+		pt = pt->left;
+	return pt;
+}
+void erase(Matrix *a)
+{
+	int i;
+	for (i = 0; i < SIZE; ++i)
+		(a[i].info) = NULL;
+
+	SIZE = 1;
+
+}
+void sort(Matrix *a)
+{
+	int	i, j;
+	Matrix p;
+	for (i = 0; i < SIZE - 1; i++) {
+		for (j = 0; j < SIZE - 1; j++) {
+			if (a[i].key<a[j].key) {
+				p = a[i];
+				a[i] = a[j];
+				a[j] = p;
+
+			}
+
+		}
+
+	}
+
+}
+
+
+int measuredFunc(void)
+{
+	int f, i;
+	Node *dop = NULL;
+	printf("Таймирование процедуры поиска.Введите ключ: ");
+	if (!getInt(&f)) return 0;
+	double fTimeStart = clock() / (double)CLOCKS_PER_SEC;
+	for (i = 0; i <= 1000000; i++) {
+		dop = RB_Find(f);
+
+	}
+	double fTimeStop = clock() / (double)CLOCKS_PER_SEC;
+	if (dop)
+	{
+		puts("Ключ найден в дереве");
+		printf(" %d   %s\n", dop->key, dop->info);
+	}
+	else puts("Ключ не найден в дереве");
+	if (!exel) {
+		puts("введите название файла для таймирования");
+		if (!getStr(&exel)) return 0;
+		fopen_s(&fileRes, exel, "a+t");
+	}
+	fprintf(fileRes, "%G%s", fTimeStop - fTimeStart,'\n');
+	printf("Длительность процесса %e * 10^-6 секунд\n", (fTimeStop - fTimeStart));
+	return 1;
+}
+int D_F_Read(void)
+{
+	char *fname, *info;
+	int n, k, pos;
+	//scanf_s("%*c");
+	printf("Введите название файла: ");
+	if (!getStr(&fname)) return 0;
+	fopen_s(&fd, fname, "r+");
+	if (fd == NULL)
+	{
+		printf("Файл с таким названием не найден\n");
+		return 1;
+	}
+	while (1) {
+		n = FgetInt(&k);
+		if (n == 0)
+			break;
+		fscanf_s(fd, "%*c");
+		info = FgetStr();
+		if (!info)
+			break;
+		if (SearchOnlyCash(k) >= 0) {
+			puts("Дублирование ключей в таблице");
+			return 1;
+		}
+		if (RB_Find(k)) {
+			puts("Дублирование ключей в дереве");
+			return 1;
+		}
+		Elem++;
+		pos = hashFun(k);
+		if (cash[pos].busy == 1) {
+			if (!cash[pos].pNode) {
+				Node *x = (Node *)calloc(1, sizeof(Node));
+				x->key = cash[pos].key;
+				x->info = cash[pos].info;
+				x = RB_Insert(x);
+				if (!x) return 0;
+			}
+			InsertnewInCash(k, info);
+			//puts("Элемент из кеш-буфера добавлен в дерево");
+		}
+		else {
+			InsertnewInCash(k, info);
+			//puts("Элемент добавлен в кеш-буфер");
+
+		}
+	}
+
+
+
+	/*if (!Search(k))
+	printf("Дублирование ключа %d\n", k);
+	else {
+	Node *x = (Node *)calloc(1, sizeof(Node));
+	x->key = k;
+	x->info = info;
+	x = RB_Insert(x);
+	Tab_Insert(x);
+	}
+	*/
+	fclose(fd);
+	puts("***Считывание завершено***");
+	return 1;
+}
+int D_Show_Tree(void)
+{
+	Node *ptr = Root;
+	if (ptr != Elist) {
+		printf("Дерево:\n");
+		show_tree(ptr);
+	}
+	else
+		puts("Дерево пусто");
+	return 1;
+}
+void show_tree(Node *ptr)
+{
+	int i = 0;
+	if (ptr != Elist) {
+		w++;
+		//printf("W: %d\n", w);
+		show_tree(ptr->right);
+		w--;
+		//printf("W: %d\n", w);
+		for (; i < w; i++)
+			printf("                    ");
+		printf("%d %d %s\n\n", ptr->key, ptr->color, ptr->info);
+		w++;
+		//printf("W: %d\n", w);
+		show_tree(ptr->left);
+		w--;
+		//printf("W: %d\n", w);
+	}
+}
+char *FgetStr(void)
+{
+	char *ptr = (char *)malloc(1);
+	char buf[81];
+	int n, len = 0;
+	*ptr = '\0';
+	do {
+		n = fscanf_s(fd, "%80[^\n]", buf, 81);
+		if (n < 0) {
+			return ptr;
+		}
+		if (n == 0)
+			fscanf_s(fd, "%*c");
+		else {
+			len += strlen(buf);
+			ptr = (char *)realloc(ptr, len + 1);
+			strcat_s(ptr, (strlen(ptr) + 1 + strlen(buf)), buf);
+		}
+	} while (n > 0);
+	return ptr;
+}
+
+int FgetInt(int *a)
+{
+	int n;
+	do {
+		n = fscanf_s(fd, "%d", a, sizeof(int));
+		if (n < 0)
+			return 0;
+		if (n == 0) {
+			printf("Ошибка ввода. Повторите:\n");
+			fscanf_s(fd, "%*[^\n]");
+		}
+	} while (n == 0);
+	return 1;
+}
